@@ -8,7 +8,7 @@ import torch
 from dataloader import create_dataloader
 
 
-CLASS_NAMES = ["NORMAL", "PNEUMONIA"]
+from config import CLASS_NAMES
 
 
 def denormalize(image: torch.Tensor) -> torch.Tensor:

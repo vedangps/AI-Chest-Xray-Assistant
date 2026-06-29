@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from dataset import load_dataset
 
 
-BATCH_SIZE = 32
+from config import BATCH_SIZE
 
 
 def create_dataloader(

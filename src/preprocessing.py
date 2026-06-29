@@ -6,7 +6,7 @@ Image preprocessing utilities for the Chest X-ray project.
 from torchvision import transforms
 
 
-IMAGE_SIZE = (224, 224)
+from config import IMAGE_SIZE
 
 
 def get_transforms(train: bool = True):
