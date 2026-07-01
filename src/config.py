@@ -16,6 +16,15 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 # ==========================
 
 MODEL_PATH = MODEL_DIR / "custom_cnn" / "best_model.pth"
+DENSENET_MODEL_PATH = MODEL_DIR / "densenet121" / "best_model.pth"
+DENSENET_TUNED_METRICS_PATH = (
+    MODEL_DIR / "densenet121" / "tuned_metrics.json"
+)
+
+DEFAULT_DECISION_THRESHOLD = 0.50
+THRESHOLD_SWEEP_MIN = 0.40
+THRESHOLD_SWEEP_MAX = 0.95
+THRESHOLD_SWEEP_STEPS = 111
 
 # ==========================
 # Data Configuration
@@ -36,7 +45,7 @@ CLASS_NAMES = (
 # Training Configuration
 # ==========================
 
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
 LEARNING_RATE = 0.001
 
@@ -70,6 +79,7 @@ if __name__ == "__main__":
     print(f"Data         : {DATA_DIR}")
     print(f"Models       : {MODEL_DIR}")
     print(f"Model Path   : {MODEL_PATH}")
+    print(f"DenseNet Path: {DENSENET_MODEL_PATH}")
     print(f"Assets       : {ASSETS_DIR}")
     print(f"Docs         : {DOCS_DIR}")
     print(f"Image Size   : {IMAGE_SIZE}")

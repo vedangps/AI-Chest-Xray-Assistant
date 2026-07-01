@@ -38,7 +38,6 @@ class MedicalReport:
                 f"**Educational Findings**\n{self.findings}",
                 f"**Grad-CAM Observation**\n{self.gradcam_observation}",
                 f"**Recommended Next Step**\n{self.recommendation}",
-                f"**Disclaimer**\n{self.disclaimer}",
             ]
         )
 

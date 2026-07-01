@@ -1,0 +1,32 @@
+{
+  "baseline": {
+    "threshold": 0.5,
+    "accuracy": 0.8397435897435898,
+    "specificity": 0.5769230769230769,
+    "recall": 0.9974358974358974,
+    "balanced_accuracy": 0.7871794871794872,
+    "true_negatives": 135,
+    "false_positives": 99,
+    "false_negatives": 1,
+    "true_positives": 389
+  },
+  "optimal": {
+    "threshold": 0.945,
+    "accuracy": 0.9118589743589743,
+    "specificity": 0.8333333333333334,
+    "recall": 0.958974358974359,
+    "balanced_accuracy": 0.8961538461538462,
+    "true_negatives": 195,
+    "false_positives": 39,
+    "false_negatives": 16,
+    "true_positives": 374
+  },
+  "roc_auc": 0.9587223317992549,
+  "model_path": "C:\\Users\\vedan\\Documents\\projects\\AI-Chest-Xray-Assistant\\models\\densenet121\\best_model.pth",
+  "generated_at": "2026-07-01T19:42:14.502758+00:00",
+  "threshold_search": {
+    "min": 0.4,
+    "max": 0.95,
+    "steps": 111
+  }
+}

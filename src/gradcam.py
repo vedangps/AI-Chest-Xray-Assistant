@@ -6,6 +6,7 @@ import argparse
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
@@ -17,16 +18,20 @@ from config import (
     ASSETS_DIR,
     CLASS_NAMES,
     DATA_DIR,
+    DEFAULT_DECISION_THRESHOLD,
 )
 from predict import (
     build_prediction_result,
-    load_model,
     prepare_image,
 )
+from calibration import (
+    load_threshold_calibration,
+    resolve_decision_threshold,
+)
+from predict_densenet import load_densenet_model
 
 
 IMAGE_EXTENSIONS = {".jpeg", ".jpg", ".png"}
-TARGET_LAYER_INDEX = 16
 
 
 @dataclass
@@ -39,6 +44,8 @@ class GradCAMResult:
     class_index: int
     predicted_class: str
     confidence_score: float
+    probabilities: tuple[float, ...]
+    decision_threshold: float
     heatmap: np.ndarray
     original_image: np.ndarray
     overlay_image: np.ndarray
@@ -54,14 +61,11 @@ class GradCAMHook(AbstractContextManager):
         self.activations = None
         self.gradients = None
         self._forward_handle = None
-        self._backward_handle = None
+        self._gradient_handle = None
 
     def __enter__(self):
         self._forward_handle = self.target_layer.register_forward_hook(
             self._save_activation
-        )
-        self._backward_handle = self.target_layer.register_full_backward_hook(
-            self._save_gradient
         )
         return self
 
@@ -69,14 +73,20 @@ class GradCAMHook(AbstractContextManager):
         if self._forward_handle is not None:
             self._forward_handle.remove()
 
-        if self._backward_handle is not None:
-            self._backward_handle.remove()
+        if self._gradient_handle is not None:
+            self._gradient_handle.remove()
 
     def _save_activation(self, module, inputs, output) -> None:
-        self.activations = output.detach()
+        # Clone hook outputs to avoid autograd view/in-place conflicts
+        # raised by DenseNet backward execution.
+        self.activations = output.detach().clone()
+        if output.requires_grad:
+            self._gradient_handle = output.register_hook(
+                self._save_gradient
+            )
 
-    def _save_gradient(self, module, grad_input, grad_output) -> None:
-        self.gradients = grad_output[0].detach()
+    def _save_gradient(self, gradient: torch.Tensor) -> None:
+        self.gradients = gradient.detach().clone()
 
 
 def denormalize_image(image: torch.Tensor) -> np.ndarray:
@@ -148,12 +158,32 @@ def create_overlay(
     return np.clip(overlay, 0, 1)
 
 
+def resolve_target_layer(model: Any):
+    """
+    Resolve the last convolutional layer for supported model families.
+    """
+
+    if (
+        hasattr(model, "backbone")
+        and hasattr(model.backbone, "features")
+    ):
+        return model.backbone.features
+
+    if hasattr(model, "features"):
+        return model.features[16]
+
+    raise AttributeError(
+        "Unable to resolve a Grad-CAM target layer for the provided model."
+    )
+
+
 def compute_gradcam(
     image_path: str | Path,
     model,
     device: torch.device,
     target_class_index: int | None = None,
     alpha: float = 0.4,
+    decision_threshold: float = DEFAULT_DECISION_THRESHOLD,
 ) -> GradCAMResult:
     """
     Run one forward and backward pass to compute Grad-CAM.
@@ -166,13 +196,16 @@ def compute_gradcam(
         device=device,
     )
 
-    target_layer = model.features[TARGET_LAYER_INDEX]
+    target_layer = resolve_target_layer(model)
 
     with GradCAMHook(target_layer) as hook:
 
         outputs = model(image)
 
-        prediction_result = build_prediction_result(outputs)
+        prediction_result = build_prediction_result(
+            outputs,
+            decision_threshold=decision_threshold,
+        )
 
         if target_class_index is None:
             target_class_index = prediction_result.class_index
@@ -211,6 +244,8 @@ def compute_gradcam(
         class_index=target_class_index,
         predicted_class=CLASS_NAMES[target_class_index],
         confidence_score=confidence_score,
+        probabilities=prediction_result.probabilities,
+        decision_threshold=prediction_result.decision_threshold,
         heatmap=heatmap,
         original_image=original_image,
         overlay_image=overlay_image,
@@ -361,7 +396,10 @@ def main() -> None:
     arguments = parser.parse_args()
 
     if arguments.class_index is not None:
-        if arguments.class_index < 0 or arguments.class_index >= len(CLASS_NAMES):
+        if (
+            arguments.class_index < 0
+            or arguments.class_index >= len(CLASS_NAMES)
+        ):
             raise ValueError(
                 "class-index must be between "
                 f"0 and {len(CLASS_NAMES) - 1}."
@@ -397,7 +435,8 @@ def main() -> None:
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
-    model = load_model(device)
+    model = load_densenet_model(device)
+    calibration = load_threshold_calibration()
 
     result = compute_gradcam(
         image_path=image_path,
@@ -405,6 +444,7 @@ def main() -> None:
         device=device,
         target_class_index=arguments.class_index,
         alpha=arguments.alpha,
+        decision_threshold=resolve_decision_threshold(calibration),
     )
 
     output_path = resolve_output_path(

@@ -1,30 +1,42 @@
-# Virtual Environment
+# Virtual environments
 .venv/
+venv/
+env/
 
-# Python cache
+# Python caches
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Dataset
+# Local data
 data/
 
-# Trained models
-models/
+# Model weights
+models/**/*.pth
+
+# Generated outputs
+assets/*
+!assets/gradcam_IM-0001-0001.png
+reports/
+reports/tmp/
+
+# Environment variables
+.env
+.env.*
+
+# Editor settings
+.vscode/
+.idea/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# VS Code
-.vscode/
-
-# Environment variables
-.env
-
-# Generated outputs
-assets/
-reports/
+# Local scratch files
+test_save.json
+*.tmp
