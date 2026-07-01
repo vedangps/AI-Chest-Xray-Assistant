@@ -15,7 +15,7 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 # Model Configuration
 # ==========================
 
-MODEL_PATH = MODEL_DIR / "best_model.pth"
+MODEL_PATH = MODEL_DIR / "custom_cnn" / "best_model.pth"
 
 # ==========================
 # Data Configuration

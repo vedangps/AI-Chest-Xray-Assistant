@@ -26,7 +26,7 @@ from predict import (
 
 
 IMAGE_EXTENSIONS = {".jpeg", ".jpg", ".png"}
-TARGET_LAYER_INDEX = 6
+TARGET_LAYER_INDEX = 16
 
 
 @dataclass
@@ -42,18 +42,6 @@ class GradCAMResult:
     heatmap: np.ndarray
     original_image: np.ndarray
     overlay_image: np.ndarray
-
-
-@dataclass
-class GradCAMSummary:
-    """
-    Human-readable Grad-CAM summary details.
-    """
-
-    dominant_region: str
-    peak_activation: float
-    coverage_percent: float
-    explanation: str
 
 
 class GradCAMHook(AbstractContextManager):
@@ -89,27 +77,6 @@ class GradCAMHook(AbstractContextManager):
 
     def _save_gradient(self, module, grad_input, grad_output) -> None:
         self.gradients = grad_output[0].detach()
-
-
-def find_default_image_path() -> Path:
-    """
-    Return one sample image from the test split.
-    """
-
-    test_dir = DATA_DIR / "chest_xray" / "test"
-
-    if not test_dir.exists():
-        raise FileNotFoundError(
-            f"Test directory not found: {test_dir}"
-        )
-
-    for image_path in sorted(test_dir.rglob("*")):
-        if image_path.is_file() and image_path.suffix.lower() in IMAGE_EXTENSIONS:
-            return image_path
-
-    raise FileNotFoundError(
-        f"No supported image found in: {test_dir}"
-    )
 
 
 def denormalize_image(image: torch.Tensor) -> np.ndarray:
@@ -247,70 +214,6 @@ def compute_gradcam(
         heatmap=heatmap,
         original_image=original_image,
         overlay_image=overlay_image,
-    )
-
-
-def summarize_gradcam(
-    result: GradCAMResult,
-) -> GradCAMSummary:
-    """
-    Convert the raw heatmap into a short educational summary.
-    """
-
-    heatmap = result.heatmap
-
-    row_slices = np.array_split(
-        np.arange(heatmap.shape[0]),
-        3,
-    )
-    column_slices = np.array_split(
-        np.arange(heatmap.shape[1]),
-        3,
-    )
-
-    region_labels = (
-        ("upper-left", "upper-center", "upper-right"),
-        ("middle-left", "middle-center", "middle-right"),
-        ("lower-left", "lower-center", "lower-right"),
-    )
-
-    dominant_region = "middle-center"
-    dominant_score = float("-inf")
-
-    for row_index, row_values in enumerate(row_slices):
-        for column_index, column_values in enumerate(column_slices):
-            region_score = float(
-                heatmap[
-                    row_values[0]:row_values[-1] + 1,
-                    column_values[0]:column_values[-1] + 1,
-                ].mean()
-            )
-
-            if region_score > dominant_score:
-                dominant_score = region_score
-                dominant_region = region_labels[row_index][column_index]
-
-    peak_activation = float(heatmap.max() * 100)
-
-    coverage_percent = float(
-        (heatmap >= 0.6).mean() * 100
-    )
-
-    explanation = (
-        "Grad-CAM highlighted the "
-        f"{dominant_region} region most strongly, "
-        f"with a peak activation of {peak_activation:.1f}% "
-        f"and elevated attention across {coverage_percent:.1f}% "
-        "of the image. This visualization reflects where the "
-        "model focused during classification, not a confirmed "
-        "site of disease."
-    )
-
-    return GradCAMSummary(
-        dominant_region=dominant_region,
-        peak_activation=peak_activation,
-        coverage_percent=coverage_percent,
-        explanation=explanation,
     )
 
 
@@ -469,11 +372,26 @@ def main() -> None:
             "alpha must be between 0 and 1."
         )
 
-    image_path = (
-        arguments.image_path
-        if arguments.image_path is not None
-        else find_default_image_path()
-    )
+    # Inlined default image resolution logic
+    image_path = arguments.image_path
+    if image_path is None:
+        test_dir = DATA_DIR / "chest_xray" / "test"
+        if not test_dir.exists():
+            raise FileNotFoundError(
+                f"Test directory not found: {test_dir}"
+            )
+        
+        found_path = None
+        for path in sorted(test_dir.rglob("*")):
+            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
+                found_path = path
+                break
+        
+        if found_path is None:
+            raise FileNotFoundError(
+                f"No supported image found in: {test_dir}"
+            )
+        image_path = found_path
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"

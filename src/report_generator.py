@@ -3,8 +3,7 @@ Generate educational AI-assisted chest X-ray reports.
 """
 
 from dataclasses import dataclass
-
-from gradcam import GradCAMSummary
+import numpy as np
 
 
 DISCLAIMER_TEXT = (
@@ -104,10 +103,61 @@ def build_findings(
     )
 
 
+def _analyze_heatmap_spatial_distribution(heatmap: np.ndarray) -> str:
+    """
+    Analyze the raw Grad-CAM heatmap grid to extract structural text descriptions.
+    """
+    row_slices = np.array_split(
+        np.arange(heatmap.shape[0]),
+        3,
+    )
+    column_slices = np.array_split(
+        np.arange(heatmap.shape[1]),
+        3,
+    )
+
+    region_labels = (
+        ("upper-left", "upper-center", "upper-right"),
+        ("middle-left", "middle-center", "middle-right"),
+        ("lower-left", "lower-center", "lower-right"),
+    )
+
+    dominant_region = "middle-center"
+    dominant_score = float("-inf")
+
+    for row_index, row_values in enumerate(row_slices):
+        for column_index, column_values in enumerate(column_slices):
+            region_score = float(
+                heatmap[
+                    row_values[0]:row_values[-1] + 1,
+                    column_values[0]:column_values[-1] + 1,
+                ].mean()
+            )
+
+            if region_score > dominant_score:
+                dominant_score = region_score
+                dominant_region = region_labels[row_index][column_index]
+
+    peak_activation = float(heatmap.max() * 100)
+    coverage_percent = float(
+        (heatmap >= 0.6).mean() * 100
+    )
+
+    return (
+        "Grad-CAM highlighted the "
+        f"{dominant_region} region most strongly, "
+        f"with a peak activation of {peak_activation:.1f}% "
+        f"and elevated attention across {coverage_percent:.1f}% "
+        "of the image. This visualization reflects where the "
+        "model focused during classification, not a confirmed "
+        "site of disease."
+    )
+
+
 def generate_medical_report(
     prediction: str,
     confidence_score: float,
-    gradcam_summary: GradCAMSummary,
+    heatmap: np.ndarray,
 ) -> MedicalReport:
     """
     Create a reusable educational report from model outputs.
@@ -124,6 +174,8 @@ def generate_medical_report(
         confidence_score=confidence_score,
     )
 
+    gradcam_observation = _analyze_heatmap_spatial_distribution(heatmap)
+
     recommendation = (
         "Correlate this result with symptoms, vital signs, prior "
         "imaging, laboratory data, and formal review by a licensed "
@@ -134,7 +186,7 @@ def generate_medical_report(
         title="AI-Assisted Chest X-ray Educational Report",
         overview=overview,
         findings=findings,
-        gradcam_observation=gradcam_summary.explanation,
+        gradcam_observation=gradcam_observation,
         recommendation=recommendation,
         disclaimer=DISCLAIMER_TEXT,
     )
