@@ -1,0 +1,5 @@
+[server]
+# Cap browser uploads at 40 MB (default is 200 MB). Chest radiograph
+# JP/PNGs are only a few MB, so this keeps oversized files off the
+# CPU-only deployment. The uploader label reflects this value.
+maxUploadSize = 40

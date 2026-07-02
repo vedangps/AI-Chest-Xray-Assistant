@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import io
 import logging
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from pdf_generator import (
 )
 from predict_densenet import load_densenet_model
 from predict import load_model
+from xray_validator import validate_chest_xray
 from report_generator import (
     MedicalReport,
     generate_medical_report,
@@ -754,6 +756,33 @@ def main() -> None:
         )
 
     if uploaded_file is None:
+        return
+
+    # Gatekeeper: only run the diagnostic model on real chest radiographs.
+    try:
+        probe_image = Image.open(io.BytesIO(uploaded_file.getvalue()))
+    except Exception:
+        st.error(
+            "This file could not be read as an image. "
+            "Upload a PNG or JPG chest X-ray."
+        )
+        return
+
+    validation = validate_chest_xray(probe_image)
+    if not validation.is_xray:
+        LOGGER.info(
+            "Rejected non-X-ray upload '%s' "
+            "(channel_spread=%.3f, intensity_std=%.3f, aspect=%.2f)",
+            uploaded_file.name,
+            validation.channel_spread,
+            validation.intensity_std,
+            validation.aspect_ratio,
+        )
+        st.error(
+            "**This does not appear to be a chest X-ray.**\n\n"
+            f"{validation.reason}\n\n"
+            "Please upload a grayscale chest radiograph (PNG or JPG)."
+        )
         return
 
     try:
