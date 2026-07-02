@@ -12,18 +12,28 @@ class ChestXrayDenseNet121(nn.Module):
     DenseNet121 backbone with a custom classifier for binary classification.
     """
 
-    def __init__(self, pretrained: bool = True) -> None:
+    def __init__(
+        self,
+        pretrained: bool = True,
+        dropout: float = 0.4,
+    ) -> None:
         super().__init__()
-        
+
         # Load the standard DenseNet121 backbone
         weights = models.DenseNet121_Weights.DEFAULT if pretrained else None
         self.backbone = models.densenet121(weights=weights)
-        
+
         # Extract the input dimensions of the original classifier head
         in_features = self.backbone.classifier.in_features
-        
-        # Replace the classifier with a custom 2-class linear output head
-        self.backbone.classifier = nn.Linear(in_features, 2)
+
+        # Replace the classifier with a dropout-regularized 2-class head.
+        # Dropout curbs the rapid overfitting seen with a bare linear head
+        # (val loss bottomed at epoch 2), which was the main driver of poor
+        # specificity on the shifted test distribution.
+        self.backbone.classifier = nn.Sequential(
+            nn.Dropout(p=dropout),
+            nn.Linear(in_features, 2),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

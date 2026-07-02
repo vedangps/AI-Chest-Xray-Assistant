@@ -24,9 +24,7 @@ from config import (
     DEFAULT_DECISION_THRESHOLD,
     DENSENET_MODEL_PATH,
     DENSENET_TUNED_METRICS_PATH,
-    THRESHOLD_SWEEP_MAX,
-    THRESHOLD_SWEEP_MIN,
-    THRESHOLD_SWEEP_STEPS,
+    OPERATING_THRESHOLD,
 )
 from dataloader import create_dataloader
 from predict_densenet import load_densenet_model
@@ -102,14 +100,14 @@ def find_optimal_threshold(
     pneumonia_probabilities: np.ndarray,
 ) -> ThresholdSweepResult:
     """
-    Sweep thresholds and return the best balanced-accuracy operating point.
-    """
+    Report metrics at the fixed deployed operating point.
 
-    thresholds = np.linspace(
-        THRESHOLD_SWEEP_MIN,
-        THRESHOLD_SWEEP_MAX,
-        THRESHOLD_SWEEP_STEPS,
-    )
+    The validation split is nearly separable, so sweeping it for maximum
+    balanced accuracy drifts to the extremes and does not transfer to the
+    distribution-shifted test set. Instead we fix a clinically-motivated
+    operating threshold (``OPERATING_THRESHOLD``) and report its held-out
+    metrics alongside the 0.50 baseline.
+    """
 
     baseline_metrics = calculate_decision_metrics(
         labels=labels,
@@ -117,33 +115,15 @@ def find_optimal_threshold(
         threshold=DEFAULT_DECISION_THRESHOLD,
     )
 
-    best_metrics = baseline_metrics
-
-    for threshold in thresholds:
-        metrics = calculate_decision_metrics(
-            labels=labels,
-            pneumonia_probabilities=pneumonia_probabilities,
-            threshold=float(threshold),
-        )
-
-        is_better = (
-            metrics.balanced_accuracy
-            > best_metrics.balanced_accuracy
-        )
-        is_tie_with_higher_specificity = (
-            np.isclose(
-                metrics.balanced_accuracy,
-                best_metrics.balanced_accuracy,
-            )
-            and metrics.specificity > best_metrics.specificity
-        )
-
-        if is_better or is_tie_with_higher_specificity:
-            best_metrics = metrics
+    operating_metrics = calculate_decision_metrics(
+        labels=labels,
+        pneumonia_probabilities=pneumonia_probabilities,
+        threshold=OPERATING_THRESHOLD,
+    )
 
     calibration = ThresholdCalibration(
         baseline=baseline_metrics,
-        optimal=best_metrics,
+        optimal=operating_metrics,
         roc_auc=float(
             roc_auc_score(labels, pneumonia_probabilities)
         ),
@@ -152,7 +132,7 @@ def find_optimal_threshold(
 
     return ThresholdSweepResult(
         calibration=calibration,
-        thresholds_evaluated=len(thresholds),
+        thresholds_evaluated=1,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -184,10 +164,10 @@ def persist_threshold_result(
         **payload,
         "model_path": str(model_path),
         "generated_at": sweep_result.generated_at,
-        "threshold_search": {
-            "min": THRESHOLD_SWEEP_MIN,
-            "max": THRESHOLD_SWEEP_MAX,
-            "steps": sweep_result.thresholds_evaluated,
+        "operating_point": {
+            "threshold": OPERATING_THRESHOLD,
+            "selection": "fixed clinical operating point (see config)",
+            "metrics_split": "test",
         },
     }
 
@@ -226,22 +206,21 @@ def main() -> None:
     )
     model = load_densenet_model(device)
 
-    # Select the operating threshold on the held-out validation split so the
-    # test set stays a clean estimate of deployed performance.
-    LOGGER.info("Building validation dataloader")
-    validation_loader = create_dataloader("val")
+    # Report the fixed operating point on the held-out test set for an honest
+    # estimate of deployed performance under the dataset's distribution shift.
+    LOGGER.info("Building test dataloader")
+    test_loader = create_dataloader("test")
 
-    LOGGER.info("Collecting validation-set prediction probabilities")
+    LOGGER.info("Collecting test-set prediction probabilities")
     labels, pneumonia_probabilities = collect_test_probabilities(
         model=model,
-        test_loader=validation_loader,
+        test_loader=test_loader,
         device=device,
     )
 
     LOGGER.info(
-        "Sweeping thresholds from %.2f to %.2f",
-        THRESHOLD_SWEEP_MIN,
-        THRESHOLD_SWEEP_MAX,
+        "Evaluating fixed operating threshold %.2f",
+        OPERATING_THRESHOLD,
     )
     sweep_result = find_optimal_threshold(
         labels=labels,
