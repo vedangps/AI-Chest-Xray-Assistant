@@ -101,6 +101,15 @@ streamlit run src/app.py
 
 The app will open in your browser. If it does not open automatically, copy the local URL shown in the terminal.
 
+## Streamlit Cloud Deployment
+
+The deployed app must include at least one trained checkpoint:
+
+- Preferred: `models/densenet121/best_model.pth`
+- Fallback: `models/custom_cnn/best_model.pth`
+
+The app will use DenseNet121 when its checkpoint is available. If it is not available, it falls back to the custom CNN checkpoint.
+
 ## Quick Look Architecture
 
 ```text

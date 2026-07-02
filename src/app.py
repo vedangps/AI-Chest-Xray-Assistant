@@ -19,6 +19,8 @@ from calibration import (
     resolve_decision_threshold,
 )
 from config import (
+    DENSENET_MODEL_PATH,
+    MODEL_PATH,
     PROJECT_ROOT,
     THRESHOLD_SWEEP_MIN,
 )
@@ -32,6 +34,7 @@ from pdf_generator import (
     generate_pdf_report,
 )
 from predict_densenet import load_densenet_model
+from predict import load_model
 from report_generator import (
     MedicalReport,
     generate_medical_report,
@@ -78,16 +81,43 @@ class AnalysisArtifacts:
 
 
 @st.cache_resource
-def load_runtime() -> tuple[torch.nn.Module, torch.device]:
+def load_runtime() -> tuple[torch.nn.Module, torch.device, str]:
     """
     Load the core diagnostic engine once per Streamlit session.
+
+    Prefers the DenseNet121 checkpoint and falls back to the custom CNN.
+    If neither checkpoint is present (e.g. a fresh cloud deployment where
+    ``models/`` was not uploaded), a single ``FileNotFoundError`` naming
+    both expected locations is raised for the caller to surface cleanly.
     """
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
-    model = load_densenet_model(device)
-    return model, device
+
+    try:
+        model = load_densenet_model(device)
+        return model, device, "DenseNet121"
+    except FileNotFoundError as densenet_error:
+        LOGGER.warning(
+            "DenseNet checkpoint unavailable; falling back to custom CNN: %s",
+            densenet_error,
+        )
+
+    try:
+        model = load_model(device)
+        return model, device, "Custom CNN"
+    except FileNotFoundError as cnn_error:
+        LOGGER.warning(
+            "Custom CNN checkpoint unavailable: %s",
+            cnn_error,
+        )
+
+    raise FileNotFoundError(
+        "No diagnostic model checkpoint was found. Expected the DenseNet121 "
+        f"weights at '{DENSENET_MODEL_PATH}' or the custom CNN weights at "
+        f"'{MODEL_PATH}'."
+    )
 
 
 def inject_styles() -> None:
@@ -726,7 +756,26 @@ def main() -> None:
     if uploaded_file is None:
         return
 
-    model, device = load_runtime()
+    try:
+        model, device, engine_name = load_runtime()
+    except FileNotFoundError as error:
+        LOGGER.exception("Model checkpoint unavailable")
+        densenet_rel = DENSENET_MODEL_PATH.relative_to(PROJECT_ROOT)
+        cnn_rel = MODEL_PATH.relative_to(PROJECT_ROOT)
+        st.error(
+            "**Diagnostic model weights are missing from this deployment.**\n\n"
+            "The trained checkpoints are not bundled with the app. Add one of "
+            "the following `.pth` files to the deployment and reload:\n\n"
+            f"- `{densenet_rel}` — preferred DenseNet121 engine\n"
+            f"- `{cnn_rel}` — custom CNN fallback engine\n\n"
+            "On Streamlit Cloud, commit the weights via Git LFS or fetch them "
+            "at startup, since `models/` is excluded from the repository."
+        )
+        st.caption(str(error))
+        return
+
+    st.caption(f"Diagnostic engine loaded: {engine_name}")
+
     uploaded_image_path = save_uploaded_image(uploaded_file)
     upload_key = uploaded_image_path.name
 

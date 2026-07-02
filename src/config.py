@@ -27,6 +27,25 @@ THRESHOLD_SWEEP_MAX = 0.95
 THRESHOLD_SWEEP_STEPS = 111
 
 # ==========================
+# Grad-CAM Configuration
+# ==========================
+
+# Standard deviation (in output pixels) for Gaussian smoothing of the
+# heatmap. Removes the "hazy"/speckled activations produced by upsampling
+# a coarse 7x7 feature map to full resolution.
+GRADCAM_SMOOTHING_SIGMA = 8.0
+
+# Activations below this normalized intensity are treated as background
+# noise or anatomical edges (ribs/heart borders) and suppressed so the
+# overlay highlights only high-confidence lung pathology.
+GRADCAM_SUPPRESSION_THRESHOLD = 0.35
+
+# Peak opacity of the heatmap where activation is strongest. Blending is
+# modulated per-pixel by activation strength so cold regions keep the
+# original radiograph instead of a uniform color wash.
+GRADCAM_OVERLAY_ALPHA = 0.5
+
+# ==========================
 # Data Configuration
 # ==========================
 

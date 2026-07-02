@@ -13,12 +13,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
+from scipy.ndimage import gaussian_filter
 
 from config import (
     ASSETS_DIR,
     CLASS_NAMES,
     DATA_DIR,
     DEFAULT_DECISION_THRESHOLD,
+    GRADCAM_OVERLAY_ALPHA,
+    GRADCAM_SMOOTHING_SIGMA,
+    GRADCAM_SUPPRESSION_THRESHOLD,
 )
 from predict import (
     build_prediction_result,
@@ -105,9 +109,16 @@ def generate_cam(
     activations: torch.Tensor,
     gradients: torch.Tensor,
     output_size: tuple[int, int],
+    smoothing_sigma: float = GRADCAM_SMOOTHING_SIGMA,
+    suppression_threshold: float = GRADCAM_SUPPRESSION_THRESHOLD,
 ) -> np.ndarray:
     """
-    Generate a normalized Grad-CAM heatmap.
+    Generate a smoothed, artifact-suppressed Grad-CAM heatmap.
+
+    The raw class-activation map is min-max normalized, Gaussian smoothed to
+    remove upsampling haze, and thresholded so low-intensity background/edge
+    activations are dropped and the surviving pathology span is rescaled to
+    the full [0, 1] range.
     """
 
     weights = gradients.mean(
@@ -130,16 +141,30 @@ def generate_cam(
         align_corners=False,
     )
 
-    cam = cam.squeeze().detach().cpu()
+    cam = cam.squeeze().detach().cpu().numpy()
 
+    # Smooth away the speckled, diffuse activations that come from
+    # upsampling the coarse feature map to full image resolution.
+    if smoothing_sigma > 0:
+        cam = gaussian_filter(cam, sigma=smoothing_sigma)
+
+    # Min-max normalization into [0, 1].
     cam -= cam.min()
-
     max_value = cam.max()
-
     if max_value > 0:
         cam /= max_value
 
-    return cam.numpy()
+    # Suppress low-intensity activations (background noise, rib/heart
+    # borders) and rescale the retained high-confidence region back to
+    # [0, 1] for clear localization.
+    if 0.0 < suppression_threshold < 1.0:
+        cam = np.clip(
+            (cam - suppression_threshold) / (1.0 - suppression_threshold),
+            0.0,
+            1.0,
+        )
+
+    return cam
 
 
 def create_overlay(
@@ -149,11 +174,20 @@ def create_overlay(
 ) -> np.ndarray:
     """
     Blend the Grad-CAM heatmap with the input image.
+
+    Blending opacity is modulated per pixel by activation strength, so
+    suppressed/cold regions show the untouched radiograph and only genuine
+    pathology is tinted, avoiding a uniform color wash over the whole image.
     """
 
     heatmap_rgb = cm.jet(heatmap)[..., :3]
 
-    overlay = (1 - alpha) * original_image + alpha * heatmap_rgb
+    per_pixel_alpha = (alpha * heatmap)[..., np.newaxis]
+
+    overlay = (
+        (1 - per_pixel_alpha) * original_image
+        + per_pixel_alpha * heatmap_rgb
+    )
 
     return np.clip(overlay, 0, 1)
 
@@ -167,7 +201,14 @@ def resolve_target_layer(model: Any):
         hasattr(model, "backbone")
         and hasattr(model.backbone, "features")
     ):
-        return model.backbone.features
+        # Target the final dense block rather than the whole feature
+        # extractor. Its output is the deepest convolutional feature map
+        # (before the terminal BatchNorm/ReLU), giving the best balance of
+        # semantic meaning and spatial resolution for localization.
+        features = model.backbone.features
+        if hasattr(features, "denseblock4"):
+            return features.denseblock4
+        return features
 
     if hasattr(model, "features"):
         return model.features[16]
@@ -182,7 +223,7 @@ def compute_gradcam(
     model,
     device: torch.device,
     target_class_index: int | None = None,
-    alpha: float = 0.4,
+    alpha: float = GRADCAM_OVERLAY_ALPHA,
     decision_threshold: float = DEFAULT_DECISION_THRESHOLD,
 ) -> GradCAMResult:
     """
