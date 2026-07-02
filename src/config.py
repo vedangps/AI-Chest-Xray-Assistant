@@ -21,6 +21,23 @@ DENSENET_TUNED_METRICS_PATH = (
     MODEL_DIR / "densenet121" / "tuned_metrics.json"
 )
 
+# ==========================
+# X-ray Gate (input classifier)
+# ==========================
+# Optional learned gatekeeper that decides "chest X-ray vs. not" before the
+# diagnostic model runs. When this checkpoint is absent, the app falls back to
+# the heuristic checks in xray_validator.py, so training it is opt-in.
+XRAY_GATE_DATA_DIR = DATA_DIR / "xray_gate"
+XRAY_GATE_MODEL_PATH = MODEL_DIR / "xray_gate" / "best_model.pth"
+# Folder names under XRAY_GATE_DATA_DIR; index order defines the label ids.
+XRAY_GATE_CLASS_NAMES = ("not_xray", "xray")
+XRAY_GATE_XRAY_INDEX = 1
+XRAY_GATE_THRESHOLD = 0.5
+XRAY_GATE_BATCH_SIZE = 16
+XRAY_GATE_LEARNING_RATE = 1e-4
+XRAY_GATE_MAX_EPOCHS = 10
+XRAY_GATE_EARLY_STOPPING_PATIENCE = 3
+
 DEFAULT_DECISION_THRESHOLD = 0.50
 
 # Deliberate deployed operating point for the DenseNet121 "Standard" mode.
