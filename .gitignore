@@ -20,6 +20,10 @@ data/
 models/*
 !models/custom_cnn/
 !models/custom_cnn/best_model.pth
+# DenseNet121 deployed weights (best_model.pth via Git LFS) + calibration
+!models/densenet121/
+!models/densenet121/best_model.pth
+!models/densenet121/tuned_metrics.json
 
 # Generated outputs
 assets/*

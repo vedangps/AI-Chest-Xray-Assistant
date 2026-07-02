@@ -22,6 +22,16 @@ DENSENET_TUNED_METRICS_PATH = (
 )
 
 DEFAULT_DECISION_THRESHOLD = 0.50
+
+# DenseNet121 fine-tuning hyperparameters. A pretrained backbone must be
+# fine-tuned at a low learning rate; the project-wide LEARNING_RATE (1e-3)
+# is appropriate for the from-scratch custom CNN but is high enough to
+# wash out ImageNet features and push a pretrained net toward shortcuts.
+DENSENET_LEARNING_RATE = 1e-4
+DENSENET_BATCH_SIZE = 16
+DENSENET_MAX_EPOCHS = 15
+DENSENET_EARLY_STOPPING_PATIENCE = 3
+
 THRESHOLD_SWEEP_MIN = 0.40
 THRESHOLD_SWEEP_MAX = 0.95
 THRESHOLD_SWEEP_STEPS = 111
@@ -45,11 +55,30 @@ GRADCAM_SUPPRESSION_THRESHOLD = 0.35
 # original radiograph instead of a uniform color wash.
 GRADCAM_OVERLAY_ALPHA = 0.5
 
+# Colormap used to render the heatmap. "turbo" is perceptually uniform and
+# preserves ordering, unlike "jet" whose false luminance gradients and
+# green/cyan banding hide subtle low-intensity activations (e.g. faint
+# peripheral lung opacities). Any registered matplotlib colormap works.
+GRADCAM_COLORMAP = "turbo"
+
 # ==========================
 # Data Configuration
 # ==========================
 
 IMAGE_SIZE = (224, 224)
+
+# Shortest-side resize applied before a center crop to IMAGE_SIZE. Resizing
+# to a square directly (Resize((224, 224))) distorts each image's aspect
+# ratio, and because NORMAL and PNEUMONIA studies have systematically
+# different native aspect ratios that distortion becomes a label-correlated
+# shortcut. Resize-shortest-side + center-crop preserves anatomy geometry.
+RESIZE_SHORTEST_SIDE = 256
+
+# ImageNet statistics. The DenseNet121 backbone is pretrained on ImageNet,
+# so inputs must be normalized with the same stats for its features (and
+# therefore Grad-CAM localization) to be meaningful.
+NORMALIZE_MEAN = (0.485, 0.456, 0.406)
+NORMALIZE_STD = (0.229, 0.224, 0.225)
 
 RANDOM_SEED = 42
 
