@@ -55,20 +55,23 @@ def get_transforms(train: bool = True):
     if train:
         transform_list = [
             *resize_and_crop,
+            # Horizontal flip is a strong, cheap regularizer for chest films
+            # and teaches invariance to laterality when spotting opacities.
+            transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(
-                degrees=7,
+                degrees=10,
                 interpolation=InterpolationMode.BILINEAR,
             ),
             transforms.RandomAffine(
                 degrees=0,
-                translate=(0.03, 0.03),
-                scale=(0.95, 1.05),
+                translate=(0.05, 0.05),
+                scale=(0.9, 1.1),
                 interpolation=InterpolationMode.BILINEAR,
                 fill=0,
             ),
             transforms.ColorJitter(
-                brightness=0.1,
-                contrast=0.1,
+                brightness=0.15,
+                contrast=0.15,
             ),
             *normalize,
         ]
