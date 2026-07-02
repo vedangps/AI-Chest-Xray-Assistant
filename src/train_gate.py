@@ -48,7 +48,10 @@ def main() -> None:
         lr=XRAY_GATE_LEARNING_RATE,
         weight_decay=WEIGHT_DECAY,
     )
-    scaler = torch.amp.GradScaler(device.type, enabled=(device.type == "cuda"))
+    # Full precision: ResNet18 is tiny, and fp16 here can overflow and poison
+    # BatchNorm running stats (NaN loss / 50% val accuracy). AMP off, scaler
+    # runs as a passthrough.
+    scaler = torch.amp.GradScaler(device.type, enabled=False)
 
     XRAY_GATE_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -72,12 +75,14 @@ def main() -> None:
             device,
             optimizer=optimizer,
             scaler=scaler,
+            use_amp=False,
         )
         validation_loss, validation_acc = run_epoch(
             model,
             validation_loader,
             criterion,
             device,
+            use_amp=False,
         )
 
         print("\n" + "=" * 50)

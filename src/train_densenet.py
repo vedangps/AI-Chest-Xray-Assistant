@@ -37,12 +37,15 @@ def run_epoch(
     device,
     optimizer=None,
     scaler=None,
+    use_amp: bool = True,
 ) -> tuple[float, float]:
     """
     Run one train or eval epoch and return (average loss, accuracy).
 
     Passing ``optimizer`` (and ``scaler``) switches the epoch into training
     mode with mixed-precision updates; omitting them runs a no-grad eval pass.
+    Set ``use_amp=False`` to run in full precision (autocast off) — needed for
+    small models where fp16 can overflow and corrupt BatchNorm statistics.
     """
 
     is_training = optimizer is not None
@@ -59,7 +62,7 @@ def run_epoch(
         with torch.set_grad_enabled(is_training):
             with torch.autocast(
                 device_type=device.type,
-                enabled=(device.type == "cuda"),
+                enabled=(device.type == "cuda" and use_amp),
             ):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
