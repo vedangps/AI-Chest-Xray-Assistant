@@ -226,13 +226,15 @@ def main() -> None:
     )
     model = load_densenet_model(device)
 
-    LOGGER.info("Building test dataloader")
-    test_loader = create_dataloader("test")
+    # Select the operating threshold on the held-out validation split so the
+    # test set stays a clean estimate of deployed performance.
+    LOGGER.info("Building validation dataloader")
+    validation_loader = create_dataloader("val")
 
-    LOGGER.info("Collecting test-set prediction probabilities")
+    LOGGER.info("Collecting validation-set prediction probabilities")
     labels, pneumonia_probabilities = collect_test_probabilities(
         model=model,
-        test_loader=test_loader,
+        test_loader=validation_loader,
         device=device,
     )
 

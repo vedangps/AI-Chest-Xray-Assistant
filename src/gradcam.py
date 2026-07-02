@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import matplotlib.cm as cm
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -20,10 +20,17 @@ from config import (
     CLASS_NAMES,
     DATA_DIR,
     DEFAULT_DECISION_THRESHOLD,
+    GRADCAM_COLORMAP,
     GRADCAM_OVERLAY_ALPHA,
     GRADCAM_SMOOTHING_SIGMA,
     GRADCAM_SUPPRESSION_THRESHOLD,
+    NORMALIZE_MEAN,
+    NORMALIZE_STD,
 )
+
+
+# Perceptually-uniform colormap for heatmap rendering (see config).
+HEATMAP_CMAP = matplotlib.colormaps[GRADCAM_COLORMAP]
 from predict import (
     build_prediction_result,
     prepare_image,
@@ -96,10 +103,16 @@ class GradCAMHook(AbstractContextManager):
 def denormalize_image(image: torch.Tensor) -> np.ndarray:
     """
     Convert a normalized tensor into a displayable RGB image.
+
+    Inverts the same per-channel normalization applied during preprocessing
+    so the overlay background matches the original radiograph.
     """
 
     image = image.detach().cpu().squeeze(0)
-    image = image * 0.5 + 0.5
+
+    mean = torch.tensor(NORMALIZE_MEAN).view(-1, 1, 1)
+    std = torch.tensor(NORMALIZE_STD).view(-1, 1, 1)
+    image = image * std + mean
     image = image.clamp(0, 1)
 
     return image.permute(1, 2, 0).numpy()
@@ -180,7 +193,7 @@ def create_overlay(
     pathology is tinted, avoiding a uniform color wash over the whole image.
     """
 
-    heatmap_rgb = cm.jet(heatmap)[..., :3]
+    heatmap_rgb = HEATMAP_CMAP(heatmap)[..., :3]
 
     per_pixel_alpha = (alpha * heatmap)[..., np.newaxis]
 
@@ -340,7 +353,7 @@ def save_visualization(
     axes[0].set_title("Input Image")
     axes[0].axis("off")
 
-    axes[1].imshow(result.heatmap, cmap="jet")
+    axes[1].imshow(result.heatmap, cmap=GRADCAM_COLORMAP)
     axes[1].set_title("Grad-CAM Heatmap")
     axes[1].axis("off")
 
