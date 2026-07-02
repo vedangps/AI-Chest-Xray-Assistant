@@ -24,6 +24,9 @@ models/*
 !models/densenet121/
 !models/densenet121/best_model.pth
 !models/densenet121/tuned_metrics.json
+# X-ray input gate (fp16 weights via Git LFS)
+!models/xray_gate/
+!models/xray_gate/best_model.pth
 
 # Generated outputs
 assets/*

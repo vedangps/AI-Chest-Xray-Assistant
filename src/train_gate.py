@@ -97,7 +97,13 @@ def main() -> None:
         if validation_loss < best_validation_loss:
             best_validation_loss = validation_loss
             epochs_no_improve = 0
-            torch.save(model.state_dict(), XRAY_GATE_MODEL_PATH)
+            # Save fp16 to halve the checkpoint (~22 MB) so it fits the repo's
+            # 40 MB commit cap; load_gate_model restores fp32 for inference.
+            half_state = {
+                key: (value.half() if value.is_floating_point() else value)
+                for key, value in model.state_dict().items()
+            }
+            torch.save(half_state, XRAY_GATE_MODEL_PATH)
             print(
                 "[OK] New X-ray gate best model saved! "
                 f"(Val Loss: {validation_loss:.4f})"
