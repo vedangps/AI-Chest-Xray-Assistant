@@ -1,1 +1,4 @@
 models/densenet121/*.pth filter=lfs diff=lfs merge=lfs -text
+
+# Keep shell hooks as LF so they run under sh (CRLF -> "bad interpreter").
+.githooks/** text eol=lf
