@@ -1,0 +1,30 @@
+#!/bin/sh
+# Cap repository upload size: block committing any file larger than 40 MB.
+# Checks the real working-tree size, so it also limits Git LFS uploads
+# (an LFS pointer is tiny in git, but the object still uploads at full size).
+#
+# Install (already done by the setup, re-run after a fresh clone):
+#   cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# We intentionally do NOT set core.hooksPath, because Git LFS installs its
+# own hooks under .git/hooks and repointing hooksPath would disable them.
+
+max_bytes=41943040  # 40 * 1024 * 1024
+oversized=0
+
+for path in $(git diff --cached --name-only --diff-filter=ACMR); do
+    [ -f "$path" ] || continue
+    bytes=$(wc -c < "$path" | tr -d '[:space:]')
+    if [ "$bytes" -gt "$max_bytes" ]; then
+        mb=$((bytes / 1048576))
+        echo "pre-commit: '$path' is ${mb} MB, over the 40 MB limit." >&2
+        oversized=1
+    fi
+done
+
+if [ "$oversized" -ne 0 ]; then
+    echo "pre-commit: commit aborted (40 MB upload cap)." >&2
+    echo "pre-commit: track very large files with Git LFS or add them to .gitignore." >&2
+    exit 1
+fi
+
+exit 0
