@@ -44,6 +44,10 @@ from predict_densenet import load_densenet_model
 
 IMAGE_EXTENSIONS = {".jpeg", ".jpg", ".png"}
 
+# The heatmap always explains the positive (PNEUMONIA) class so that red
+# consistently means "pneumonia evidence" regardless of the final decision.
+PNEUMONIA_CLASS_INDEX = CLASS_NAMES.index("PNEUMONIA")
+
 
 @dataclass
 class GradCAMResult:
@@ -261,17 +265,17 @@ def compute_gradcam(
             decision_threshold=decision_threshold,
         )
 
-        if target_class_index is None:
-            target_class_index = prediction_result.class_index
-
-        confidence_score = (
-            prediction_result.probabilities[target_class_index]
-            * 100
+        # Explain the PNEUMONIA class by default (callers may override), while
+        # the displayed label/confidence stay the actual thresholded decision.
+        explanation_index = (
+            target_class_index
+            if target_class_index is not None
+            else PNEUMONIA_CLASS_INDEX
         )
 
         model.zero_grad()
 
-        outputs[0, target_class_index].backward()
+        outputs[0, explanation_index].backward()
 
         if hook.activations is None or hook.gradients is None:
             raise RuntimeError(
@@ -287,17 +291,23 @@ def compute_gradcam(
 
     original_image = denormalize_image(image)
 
+    # Fade the overlay by how much pneumonia evidence there actually is: a
+    # confident NORMAL (low pneumonia probability) shows little to no red,
+    # while a pneumonia case shows a strong, localized hotspot. This avoids
+    # the min-max-normalized heatmap always rendering a full-red peak.
+    evidence_alpha = alpha * prediction_result.pneumonia_probability
+
     overlay_image = create_overlay(
         original_image=original_image,
         heatmap=heatmap,
-        alpha=alpha,
+        alpha=evidence_alpha,
     )
 
     return GradCAMResult(
         image_path=image_path,
-        class_index=target_class_index,
-        predicted_class=CLASS_NAMES[target_class_index],
-        confidence_score=confidence_score,
+        class_index=prediction_result.class_index,
+        predicted_class=prediction_result.predicted_class,
+        confidence_score=prediction_result.confidence_score,
         probabilities=prediction_result.probabilities,
         decision_threshold=prediction_result.decision_threshold,
         heatmap=heatmap,
